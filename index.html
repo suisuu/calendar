@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>音声カレンダー登録アプリ</title>
+    <title>音声カレンダー登録アプリ【完成版】</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -69,16 +69,58 @@
             // 自然言語解析関数
             const parseNaturalLanguage = (text) => {
                 const now = new Date();
-                
-                // 時間のパターン
-                const timePatterns = [
-                    /(\d{1,2}):(\d{2})/g,
-                    /(\d{1,2})時(?:(\d{2})分)?/g,
-                    /午前(\d{1,2})時/g,
-                    /午後(\d{1,2})時/g
-                ];
+                console.log('=== 解析開始 ===');
+                console.log('入力テキスト:', text);
 
-                // 日付のパターン
+                function getNextWeekday(targetDay) {
+                    const today = now.getDay();
+                    const daysUntilNext = (7 - today + targetDay) % 7;
+                    return daysUntilNext === 0 ? 7 : daysUntilNext;
+                }
+
+                // 時間を抽出（優先順位順）
+                let startTime = null;
+                
+                // 1. 24時間形式 (15:00, 10:30など) - 最優先
+                const timeColonMatch = text.match(/(\d{1,2}):(\d{2})/);
+                if (timeColonMatch) {
+                    const hour = parseInt(timeColonMatch[1]);
+                    const minute = timeColonMatch[2];
+                    startTime = `${hour.toString().padStart(2, '0')}:${minute}`;
+                    console.log('✅ 24時間形式で認識:', startTime);
+                }
+                // 2. 午後のパターン
+                else {
+                    const afternoonMatch = text.match(/午後(\d{1,2})時/);
+                    if (afternoonMatch) {
+                        const hour = parseInt(afternoonMatch[1]);
+                        const convertedHour = hour === 12 ? 12 : hour + 12;
+                        startTime = `${convertedHour.toString().padStart(2, '0')}:00`;
+                        console.log('✅ 午後で認識:', startTime);
+                    }
+                    // 3. 午前のパターン
+                    else {
+                        const morningMatch = text.match(/午前(\d{1,2})時/);
+                        if (morningMatch) {
+                            const hour = parseInt(morningMatch[1]);
+                            const convertedHour = hour === 12 ? 0 : hour;
+                            startTime = `${convertedHour.toString().padStart(2, '0')}:00`;
+                            console.log('✅ 午前で認識:', startTime);
+                        }
+                        // 4. 時間のみの指定（15時、3時など）
+                        else {
+                            const hourOnlyMatch = text.match(/(\d{1,2})時/);
+                            if (hourOnlyMatch) {
+                                const hour = parseInt(hourOnlyMatch[1]);
+                                startTime = `${hour.toString().padStart(2, '0')}:00`;
+                                console.log('✅ 時間のみで認識:', startTime);
+                            }
+                        }
+                    }
+                }
+
+                // 日付を抽出
+                let eventDate = new Date(now);
                 const datePatterns = [
                     { pattern: /今日/, offset: 0 },
                     { pattern: /明日/, offset: 1 },
@@ -93,74 +135,45 @@
                     { pattern: /(\d{1,2})月(\d{1,2})日/, custom: true }
                 ];
 
-                // 期間のパターン
-                const durationPatterns = [
-                    /(\d+)時間/,
-                    /(\d+)分/,
-                    /1時間/,
-                    /30分/,
-                    /2時間/
-                ];
-
-                function getNextWeekday(targetDay) {
-                    const today = now.getDay();
-                    const daysUntilNext = (7 - today + targetDay) % 7;
-                    return daysUntilNext === 0 ? 7 : daysUntilNext;
-                }
-
-                // 時間を抽出
-                let startTime = null;
-                for (const pattern of timePatterns) {
-                    const match = text.match(pattern);
-                    if (match) {
-                        if (pattern.source.includes('午後') && match[1]) {
-                            const hour = parseInt(match[1]) + (parseInt(match[1]) === 12 ? 0 : 12);
-                            startTime = `${hour.toString().padStart(2, '0')}:00`;
-                        } else if (pattern.source.includes('午前') && match[1]) {
-                            const hour = parseInt(match[1]) === 12 ? 0 : parseInt(match[1]);
-                            startTime = `${hour.toString().padStart(2, '0')}:00`;
-                        } else if (match[1] && match[2]) {
-                            startTime = `${match[1].padStart(2, '0')}:${match[2]}`;
-                        } else if (match[1]) {
-                            startTime = `${match[1].padStart(2, '0')}:00`;
-                        }
-                        break;
-                    }
-                }
-
-                // 日付を抽出
-                let eventDate = new Date(now);
                 for (const datePattern of datePatterns) {
                     if (datePattern.custom) {
                         const match = text.match(datePattern.pattern);
                         if (match) {
                             eventDate = new Date(now.getFullYear(), parseInt(match[1]) - 1, parseInt(match[2]));
+                            console.log('✅ 日付認識:', match[1] + '月' + match[2] + '日');
                             break;
                         }
                     } else if (datePattern.pattern.test(text)) {
                         eventDate = new Date(now);
                         eventDate.setDate(now.getDate() + datePattern.offset);
+                        console.log('✅ 相対日付認識:', datePattern.pattern.source, '→', eventDate.toLocaleDateString('ja-JP'));
                         break;
                     }
                 }
 
                 // 期間を抽出
                 let duration = 60; // デフォルト1時間
-                for (const pattern of durationPatterns) {
-                    const match = text.match(pattern);
-                    if (match) {
-                        if (pattern.source.includes('時間')) {
-                            duration = parseInt(match[1]) * 60;
-                        } else if (pattern.source.includes('分')) {
-                            duration = parseInt(match[1]);
-                        } else if (pattern.source === '1時間') {
-                            duration = 60;
-                        } else if (pattern.source === '30分') {
-                            duration = 30;
-                        } else if (pattern.source === '2時間') {
-                            duration = 120;
+                
+                if (text.includes('2時間')) {
+                    duration = 120;
+                    console.log('✅ 期間認識: 2時間');
+                } else if (text.includes('1時間')) {
+                    duration = 60;
+                    console.log('✅ 期間認識: 1時間');
+                } else if (text.includes('30分')) {
+                    duration = 30;
+                    console.log('✅ 期間認識: 30分');
+                } else {
+                    const hourMatch = text.match(/(\d+)時間/);
+                    if (hourMatch) {
+                        duration = parseInt(hourMatch[1]) * 60;
+                        console.log('✅ 期間認識:', hourMatch[1] + '時間');
+                    } else {
+                        const minMatch = text.match(/(\d+)分/);
+                        if (minMatch) {
+                            duration = parseInt(minMatch[1]);
+                            console.log('✅ 期間認識:', minMatch[1] + '分');
                         }
-                        break;
                     }
                 }
 
@@ -180,13 +193,22 @@
                     title = '新しい予定';
                 }
 
-                return {
+                const result = {
                     title,
                     date: eventDate,
                     startTime: startTime || '09:00',
                     duration,
                     originalText: text
                 };
+
+                console.log('=== 解析結果 ===');
+                console.log('タイトル:', result.title);
+                console.log('日付:', result.date.toLocaleDateString('ja-JP'));
+                console.log('開始時間:', result.startTime);
+                console.log('期間:', result.duration + '分');
+                console.log('================');
+
+                return result;
             };
 
             const handleParse = (text = inputText) => {
@@ -279,7 +301,7 @@
                                     <span className="text-white text-2xl">🎤</span>
                                 </div>
                                 <div>
-                                    <h1 className="text-3xl font-bold text-gray-900">音声カレンダー</h1>
+                                    <h1 className="text-3xl font-bold text-gray-900">音声カレンダー【完成版】</h1>
                                     <p className="text-gray-600">話すだけで予定を登録</p>
                                 </div>
                             </div>
@@ -361,7 +383,7 @@
                                             onChange={(e) => setInputText(e.target.value)}
                                             onKeyPress={(e) => e.key === 'Enter' && handleParse()}
                                             className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200"
-                                            placeholder="例: 来週水曜13:00から1時間会議"
+                                            placeholder="例: 明日15:00から2時間ミーティング"
                                         />
                                         <button
                                             onClick={() => handleParse()}
@@ -374,12 +396,12 @@
 
                                 {/* Examples */}
                                 <div className="bg-gray-50 p-4 rounded-xl">
-                                    <p className="text-sm font-semibold text-gray-700 mb-2">💡 音声入力例:</p>
+                                    <p className="text-sm font-semibold text-gray-700 mb-2">💡 テスト済み音声入力例:</p>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600">
                                         <div>• 明日15:00から2時間ミーティング</div>
                                         <div>• 来週金曜10:30から30分面談</div>
+                                        <div>• 今日午後3時から1時間会議</div>
                                         <div>• 12月25日18:00からパーティー</div>
-                                        <div>• 今日午後2時から会議</div>
                                     </div>
                                 </div>
                             </div>
@@ -391,7 +413,7 @@
                                 <div className="bg-white rounded-2xl shadow-xl p-12 text-center">
                                     <span className="text-6xl mb-4 block">🎤</span>
                                     <h3 className="text-xl font-semibold text-gray-600 mb-2">音声で予定を追加</h3>
-                                    <p className="text-gray-500">マイクボタンを押して「明日15時から会議」のように話してください</p>
+                                    <p className="text-gray-500">マイクボタンを押して「明日15時から2時間ミーティング」のように話してください</p>
                                 </div>
                             ) : (
                                 parsedEvents.map((event) => {
